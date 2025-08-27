@@ -1,0 +1,31 @@
+import {StyleSheet} from 'react-native';
+import Constants from 'expo-constants';
+
+var styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    marginTop: Constants.statusBarHeight,
+    flexDirection: 'column',
+    height: '100%',
+    display: "flex"
+  },
+  listItem: {
+    backgroundColor: '#002b36',
+    padding: 20,
+    marginVertical: 8,
+    marginHorizontal: 16,
+  },
+  placeTitle: {
+    textAlign: "center",
+    fontSize: 32,
+    color: 'red',
+  },
+  temp: {
+    fontSize: 32,
+    color: 'yellow',
+    textAlign: "center",
+    marginVertical: 8,
+  },
+});
+
+export default styles;

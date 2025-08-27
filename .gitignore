@@ -1,0 +1,41 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Expo / React Native
+.expo/
+.expo-shared/
+.expo-packager/
+web-build/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Platform builds (if generated locally)
+android/
+ios/
+*.apk
+*.aab
+*.ipa
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE / Editor
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Metro / cache
+metro-cache/
+
