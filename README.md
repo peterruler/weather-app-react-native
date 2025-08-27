@@ -2,7 +2,7 @@
 
 Built with OpenAI Codex
 
-![App Screenshot](../_Project/Screenshot.png)
+![App Screenshot](./_Project/Screenshot.png)
 
 Eine moderne Wetter-App, entwickelt mit React Native und Expo, die aktuelle Wetterdaten für beliebige Städte weltweit anzeigt.
 
