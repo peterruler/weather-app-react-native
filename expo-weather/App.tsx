@@ -15,6 +15,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as Location from "expo-location";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type WeatherResponse = {
   name: string;
@@ -39,6 +41,7 @@ export default function App() {
   const [loading, setLoading] = useState<boolean>(false);
   const [data, setData] = useState<WeatherResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string[]>([]);
 
   // Optional background image (assets/bg.png). Falls back to solid dark color when missing.
   let bgImage: any = null;
@@ -77,16 +80,206 @@ export default function App() {
     }
   }, []);
 
+  const fetchWeatherByCoords = useCallback(
+    async (lat: number, lon: number) => {
+      setLoading(true);
+      setError(null);
+      setData(null);
+      try {
+        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${API_KEY}`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`Anfrage fehlgeschlagen: ${res.status}`);
+        }
+        const json: WeatherResponse = await res.json();
+        setData(json);
+        const display = [json.name, json.sys?.country].filter(Boolean).join(", ");
+        if (display) setLocation(display);
+      } catch (e: any) {
+        setError(e?.message || "Etwas ist schiefgelaufen.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
   const onSubmit = useCallback(() => {
     fetchWeather(location);
     Keyboard.dismiss();
   }, [location, fetchWeather]);
 
+  // Saved locations persistence
   useEffect(() => {
-    // Optionally preload a default city; left blank per instructions.
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem("@saved_locations");
+        if (raw) setSaved(JSON.parse(raw));
+      } catch {}
+    })();
   }, []);
 
+  const persistSaved = useCallback(async (next: string[]) => {
+    setSaved(next);
+    try {
+      await AsyncStorage.setItem("@saved_locations", JSON.stringify(next));
+    } catch {}
+  }, []);
+
+  const saveLocation = useCallback(
+    (name: string) => {
+      const city = name.trim();
+      if (!city) return;
+      const list = [city, ...saved.filter((s) => s.toLowerCase() !== city.toLowerCase())];
+      const limited = list.slice(0, 5); // keep up to 5
+      persistSaved(limited);
+    },
+    [saved, persistSaved]
+  );
+
+  const removeLocation = useCallback(
+    (name: string) => {
+      const next = saved.filter((s) => s.toLowerCase() !== name.toLowerCase());
+      persistSaved(next);
+    },
+    [saved, persistSaved]
+  );
+
+  const onPressSaved = useCallback(
+    (name: string) => {
+      setLocation(name);
+      fetchWeather(name);
+    },
+    [fetchWeather]
+  );
+
+  const useMyLocation = useCallback(async () => {
+    try {
+      setError(null);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setError("Standortberechtigung erforderlich.");
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      await fetchWeatherByCoords(pos.coords.latitude, pos.coords.longitude);
+      // Try reverse geocode for display + saving
+      try {
+        const places = await Location.reverseGeocodeAsync({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        });
+        const p = places?.[0];
+        const display = [p?.city || p?.subregion, p?.country].filter(Boolean).join(", ");
+        if (display) {
+          setLocation(display);
+          saveLocation(display);
+        }
+      } catch {}
+    } catch (e: any) {
+      setError(e?.message || "Konnte Standort nicht ermitteln.");
+    }
+  }, [fetchWeatherByCoords, saveLocation]);
+
   const conditions = data?.weather?.[0]?.main ?? "";
+
+  // Deutsch-Übersetzungen für OpenWeatherMap
+  const translateWeather = useCallback((w?: { id?: number; main?: string; description?: string }) => {
+    const id = w?.id ?? 0;
+    const main = (w?.main ?? "").toLowerCase();
+    const desc = (w?.description ?? "").toLowerCase();
+
+    const mainMap: Record<string, string> = {
+      clear: "Klar",
+      clouds: "Wolken",
+      rain: "Regen",
+      drizzle: "Nieselregen",
+      thunderstorm: "Gewitter",
+      snow: "Schnee",
+      mist: "Nebel",
+      smoke: "Rauch",
+      haze: "Dunst",
+      dust: "Staub",
+      fog: "Nebel",
+      sand: "Sand",
+      ash: "Asche",
+      squall: "Böen",
+      tornado: "Tornado",
+    };
+
+    const descMap: Record<string, string> = {
+      // Clear/Clouds
+      "clear sky": "Klarer Himmel",
+      "few clouds": "Wenige Wolken",
+      "scattered clouds": "Aufgelockerte Bewölkung",
+      "broken clouds": "Aufgerissene Bewölkung",
+      "overcast clouds": "Bedeckt",
+      // Rain
+      "light rain": "Leichter Regen",
+      "moderate rain": "Mäßiger Regen",
+      "heavy intensity rain": "Starker Regen",
+      "very heavy rain": "Sehr starker Regen",
+      "extreme rain": "Extremer Regen",
+      "freezing rain": "Gefrierender Regen",
+      "light intensity shower rain": "Leichter Regenschauer",
+      "shower rain": "Regenschauer",
+      "heavy intensity shower rain": "Heftiger Regenschauer",
+      "ragged shower rain": "Unregelmäßiger Regenschauer",
+      // Drizzle
+      "light intensity drizzle": "Leichter Nieselregen",
+      drizzle: "Nieselregen",
+      "heavy intensity drizzle": "Starker Nieselregen",
+      "light intensity drizzle rain": "Leichter Nieselregen",
+      "drizzle rain": "Nieselregen",
+      "heavy intensity drizzle rain": "Starker Nieselregen",
+      "shower rain and drizzle": "Schauer und Nieselregen",
+      "heavy shower rain and drizzle": "Starker Schauer und Nieselregen",
+      "shower drizzle": "Nieselschauer",
+      // Thunderstorm
+      "thunderstorm with light rain": "Gewitter mit leichtem Regen",
+      "thunderstorm with rain": "Gewitter mit Regen",
+      "thunderstorm with heavy rain": "Gewitter mit starkem Regen",
+      "light thunderstorm": "Leichtes Gewitter",
+      thunderstorm: "Gewitter",
+      "heavy thunderstorm": "Starkes Gewitter",
+      "ragged thunderstorm": "Unregelmäßiges Gewitter",
+      // Snow
+      "light snow": "Leichter Schneefall",
+      snow: "Schnee",
+      "heavy snow": "Starker Schneefall",
+      sleet: "Schneeregen",
+      "light shower sleet": "Leichter Schneeregenschauer",
+      "shower sleet": "Schneeregenschauer",
+      "light rain and snow": "Leichter Regen und Schnee",
+      "rain and snow": "Regen und Schnee",
+      "light shower snow": "Leichter Schneeschauer",
+      "shower snow": "Schneeschauer",
+      "heavy shower snow": "Heftiger Schneeschauer",
+      // Atmosphere
+      mist: "Nebel",
+      smoke: "Rauch",
+      haze: "Dunst",
+      "sand/dust whirls": "Sand-/Staubwirbel",
+      fog: "Nebel",
+      sand: "Sand",
+      dust: "Staub",
+      "volcanic ash": "Vulkanasche",
+      squalls: "Böen",
+      tornado: "Tornado",
+    };
+
+    // Prefer code-specific mapping for clouds variants
+    let deDesc: string | undefined;
+    if (id === 800) deDesc = "Klarer Himmel";
+    else if (id === 801) deDesc = "Wenige Wolken";
+    else if (id === 802) deDesc = "Aufgelockerte Bewölkung";
+    else if (id === 803) deDesc = "Aufgerissene Bewölkung";
+    else if (id === 804) deDesc = "Bedeckt";
+    else deDesc = descMap[desc];
+
+    const deMain = mainMap[main] || (deDesc ? deDesc : w?.main ?? "");
+    return { deMain, deDesc: deDesc ?? (w?.description ?? "") };
+  }, []);
 
   const heroImage = useMemo(() => {
     const cond = conditions.toLowerCase();
@@ -109,6 +302,7 @@ export default function App() {
 
   const infoList: InfoRow[] = useMemo(() => {
     if (!data) return [];
+    const de = translateWeather(data.weather?.[0]);
     return [
       {
         key: "temp",
@@ -131,13 +325,9 @@ export default function App() {
         value: `${data.main.humidity}%`,
       },
       { key: "wind", label: "Wind", value: `${data.wind?.speed ?? 0} m/s` },
-      {
-        key: "cond",
-        label: "Bedingung",
-        value: `${data.weather?.[0]?.description ?? "-"}`,
-      },
+      { key: "cond", label: "Bedingung", value: `${de.deDesc || "-"}` },
     ];
-  }, [data]);
+  }, [data, translateWeather]);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -170,6 +360,37 @@ export default function App() {
             </TouchableOpacity>
           </View>
 
+          <View style={styles.actionsRow}>
+            <TouchableOpacity onPress={useMyLocation} style={[styles.button, styles.secondaryButton]}>
+              <Text style={styles.buttonText}>📍 Meinen Standort</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => saveLocation(location)} style={[styles.button, styles.secondaryButton]}>
+              <Text style={styles.buttonText}>➕ Speichern</Text>
+            </TouchableOpacity>
+          </View>
+
+          {saved.length > 0 && (
+            <View style={{ marginBottom: 12 }}>
+              <FlatList
+                horizontal
+                data={saved}
+                keyExtractor={(item) => item}
+                contentContainerStyle={{ gap: 8 }}
+                showsHorizontalScrollIndicator={false}
+                renderItem={({ item }) => (
+                  <View style={styles.card}>
+                    <TouchableOpacity onPress={() => onPressSaved(item)}>
+                      <Text style={styles.cardText}>{item}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => removeLocation(item)} accessibilityRole="button">
+                      <Text style={styles.cardRemove}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              />
+            </View>
+          )}
+
           {loading ? (
             <View style={styles.center}>
               <ActivityIndicator size="large" color="#9bdcff" />
@@ -188,7 +409,7 @@ export default function App() {
                     {data.sys?.country ? `, ${data.sys.country}` : ""}
                   </Text>
                   <Text style={styles.condition}>
-                    {data.weather?.[0]?.main ?? ""}
+                    {translateWeather(data.weather?.[0]).deMain}
                   </Text>
                 </View>
                 <Image
@@ -293,6 +514,34 @@ const styles = StyleSheet.create({
     color: "#eef6ff",
     fontWeight: "600",
     fontSize: 16,
+  },
+  secondaryButton: {
+    backgroundColor: "#1f2630",
+    borderColor: "#2a3441",
+  },
+  actionsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  card: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#1a1f27",
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#2a3441",
+  },
+  cardText: {
+    color: "#d9e6f2",
+    fontWeight: "600",
+  },
+  cardRemove: {
+    color: "#99a8b8",
+    marginLeft: 4,
   },
   center: {
     alignItems: "center",

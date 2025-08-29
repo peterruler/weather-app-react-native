@@ -19,7 +19,9 @@
     "react-native": "0.79.5",
     "react-native-web": "~0.20.0",
     "react-dom": "19.0.0",
-    "@expo/metro-runtime": "~5.0.4"
+    "@expo/metro-runtime": "~5.0.4",
+    "expo-location": "~18.1.6",
+    "@react-native-async-storage/async-storage": "~2.1.2"
   },
   "devDependencies": {
     "@types/react": "~19.0.10",
@@ -30,7 +32,7 @@
     "jest-expo": "~53.0.10",
     "@testing-library/react-native": "^13.3.3",
     "@testing-library/jest-native": "^5.4.3",
-    "react-test-renderer": "^19.0.0",
+    "react-test-renderer": "19.0.0",
     "typescript": "~5.8.3"
   },
   "packageManager": "yarn@1.22.22+sha1.ac34549e6aa8e7ead463a7407e1c7390f61a6610"
