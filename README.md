@@ -152,7 +152,11 @@ Umfassende Test-Suite mit Jest und React Native Testing Library für zuverlässi
 
 ## Lizenz 📄
 
-Dieses Projekt ist für Bildungszwecke erstellt. Bitte beachten Sie die Nutzungsbedingungen der OpenWeatherMap API bei der Verwendung.
+Dieses Projekt ist unter der MIT License lizenziert - siehe die [LICENSE](expo-weather/LICENSE) Datei für Details.
+
+Die MIT License erlaubt die freie Nutzung, Modifikation und Verteilung des Codes für private und kommerzielle Zwecke.
+
+**Hinweis**: Bitte beachten Sie die Nutzungsbedingungen der OpenWeatherMap API bei der Verwendung.
 
 ## Beitragen 🤝
 
