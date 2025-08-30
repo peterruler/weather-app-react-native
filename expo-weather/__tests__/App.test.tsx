@@ -20,17 +20,26 @@ describe('App (react-test-renderer)', () => {
   });
 
   it('renders initial UI in German', () => {
-    const tree = TestRenderer.create(<App />);
+    let tree: TestRenderer.ReactTestRenderer;
+    act(() => {
+      tree = TestRenderer.create(<App />);
+    });
+    // @ts-expect-error assigned in act above
     const title = tree.root.findAllByType(Text).find((n) => n.props.children === 'Wetter');
     expect(title).toBeTruthy();
+    // @ts-expect-error assigned in act above
     const input = tree.root.findByType(TextInput);
     expect(input.props.placeholder).toContain('Stadt eingeben');
+    // @ts-expect-error assigned in act above
     const buttonText = tree.root.findAllByType(Text).find((n) => n.props.children === 'Suchen');
     expect(buttonText).toBeTruthy();
   });
 
   it('validates empty input and shows German hint', () => {
-    const tree = TestRenderer.create(<App />);
+    let tree: TestRenderer.ReactTestRenderer;
+    act(() => {
+      tree = TestRenderer.create(<App />);
+    });
     const buttonNode = tree.root.findAll((n) => n.props && typeof n.props.onPress === 'function').find((n) => {
       try {
         const t = n.findByType(Text);
@@ -53,7 +62,10 @@ describe('App (react-test-renderer)', () => {
   it('calls fetch with correct URL and shows loading', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (global as any).fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => sampleOk });
-    const tree = TestRenderer.create(<App />);
+    let tree: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(<App />);
+    });
     const input = tree.root.findByType(TextInput);
     const button = tree.root.findAll((n) => n.props && typeof n.props.onPress === 'function').find((n) => {
       try {
@@ -85,7 +97,10 @@ describe('App (react-test-renderer)', () => {
   it('shows German not found error on 404', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (global as any).fetch = jest.fn().mockResolvedValue({ ok: false, status: 404 });
-    const tree = TestRenderer.create(<App />);
+    let tree: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(<App />);
+    });
     const input = tree.root.findByType(TextInput);
     const button = tree.root.findAll((n) => n.props && typeof n.props.onPress === 'function').find((n) => {
       try {
@@ -102,7 +117,6 @@ describe('App (react-test-renderer)', () => {
     await act(async () => {
       // @ts-expect-error onPress is provided by our mock
       button!.props.onPress();
-      await Promise.resolve();
     });
 
     const errorText = tree.root.findAllByType(Text).find((n) => n.props.children === 'Ort wurde nicht gefunden.');

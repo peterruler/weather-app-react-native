@@ -14,9 +14,11 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useColorScheme,
 } from "react-native";
 import * as Location from "expo-location";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { computeSavedAfterRemove, computeSavedAfterSave, getCurrentPositionWithRetry } from "./src/utils";
 
 type WeatherResponse = {
   name: string;
@@ -37,11 +39,55 @@ type InfoRow = { key: string; label: string; value: string };
 const API_KEY = "ca4ab639490b58b65967f8a7816cb8d4";
 
 export default function App() {
+  const systemScheme = useColorScheme();
   const [location, setLocation] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [data, setData] = useState<WeatherResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string[]>([]);
+  const [themeMode, setThemeMode] = useState<"light" | "dark">("dark");
+
+  const isDark = themeMode === "dark" || (!themeMode && systemScheme === "dark");
+
+  const theme = useMemo(
+    () =>
+      isDark
+        ? {
+            bg: "#0b1117",
+            panelBg: "#0b1117",
+            inputBg: "#1a1f27",
+            text: "#d9e6f2",
+            textStrong: "#e6f2ff",
+            muted: "#b3c2d1",
+            cardBg: "#1a1f27",
+            border: "#2a3441",
+            secondaryButtonBg: "#1f2630",
+            secondaryButtonBorder: "#2a3441",
+            buttonPrimaryBg: "#0A84FF",
+            buttonPrimaryBorder: "#0a6ad1",
+            buttonText: "#eef6ff",
+            placeholder: "#999",
+          }
+        : {
+            bg: "#f4f7fb",
+            panelBg: "#f9fbfd",
+            inputBg: "#ffffff",
+            text: "#0b1117",
+            textStrong: "#0b1117",
+            muted: "#5b6675",
+            cardBg: "#ffffff",
+            border: "#d6dee6",
+            secondaryButtonBg: "#e8eef5",
+            secondaryButtonBorder: "#d6dee6",
+            buttonPrimaryBg: "#0A84FF",
+            buttonPrimaryBorder: "#0a6ad1",
+            buttonText: "#eef6ff",
+            placeholder: "#666",
+          },
+    [isDark]
+  );
+
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   // Optional background image (assets/bg.png). Falls back to solid dark color when missing.
   let bgImage: any = null;
@@ -115,6 +161,8 @@ export default function App() {
       try {
         const raw = await AsyncStorage.getItem("@saved_locations");
         if (raw) setSaved(JSON.parse(raw));
+        const t = await AsyncStorage.getItem("@theme_mode");
+        if (t === "light" || t === "dark") setThemeMode(t);
       } catch {}
     })();
   }, []);
@@ -126,24 +174,15 @@ export default function App() {
     } catch {}
   }, []);
 
-  const saveLocation = useCallback(
-    (name: string) => {
-      const city = name.trim();
-      if (!city) return;
-      const list = [city, ...saved.filter((s) => s.toLowerCase() !== city.toLowerCase())];
-      const limited = list.slice(0, 5); // keep up to 5
-      persistSaved(limited);
-    },
-    [saved, persistSaved]
-  );
+  const saveLocation = useCallback((name: string) => {
+    const next = computeSavedAfterSave(saved, name);
+    if (next !== saved) persistSaved(next);
+  }, [saved, persistSaved]);
 
-  const removeLocation = useCallback(
-    (name: string) => {
-      const next = saved.filter((s) => s.toLowerCase() !== name.toLowerCase());
-      persistSaved(next);
-    },
-    [saved, persistSaved]
-  );
+  const removeLocation = useCallback((name: string) => {
+    const next = computeSavedAfterRemove(saved, name);
+    persistSaved(next);
+  }, [saved, persistSaved]);
 
   const onPressSaved = useCallback(
     (name: string) => {
@@ -161,7 +200,7 @@ export default function App() {
         setError("Standortberechtigung erforderlich.");
         return;
       }
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const pos = await getCurrentPositionWithRetry();
       await fetchWeatherByCoords(pos.coords.latitude, pos.coords.longitude);
       // Try reverse geocode for display + saving
       try {
@@ -331,11 +370,12 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ExpoStatusBar style="light" />
+      <ExpoStatusBar style={isDark ? "light" : "dark"} />
       <ImageBackground
         source={bgImage ?? undefined}
         style={styles.bg}
         resizeMode="cover"
+        imageStyle={styles.bgImage}
       >
         <View style={styles.container}>
           <Text style={styles.title}>Wetter</Text>
@@ -343,7 +383,7 @@ export default function App() {
           <View style={styles.searchRow}>
             <TextInput
               placeholder="Stadt eingeben (z. B. Berlin)"
-              placeholderTextColor="#999"
+              placeholderTextColor={theme.placeholder}
               value={location}
               onChangeText={setLocation}
               onSubmitEditing={onSubmit}
@@ -362,10 +402,22 @@ export default function App() {
 
           <View style={styles.actionsRow}>
             <TouchableOpacity onPress={useMyLocation} style={[styles.button, styles.secondaryButton]}>
-              <Text style={styles.buttonText}>📍 Meinen Standort</Text>
+              <Text style={[styles.buttonText, styles.secondaryButtonText]}>📍 Meinen Standort</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => saveLocation(location)} style={[styles.button, styles.secondaryButton]}>
-              <Text style={styles.buttonText}>➕ Speichern</Text>
+              <Text style={[styles.buttonText, styles.secondaryButtonText]}>➕ Speichern</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={async () => {
+                const next = themeMode === "dark" ? "light" : "dark";
+                setThemeMode(next);
+                try {
+                  await AsyncStorage.setItem("@theme_mode", next);
+                } catch {}
+              }}
+              style={[styles.button, styles.secondaryButton]}
+            >
+              <Text style={[styles.buttonText, styles.secondaryButtonText]}>{isDark ? "☀️ Hell" : "🌙 Dunkel"}</Text>
             </TouchableOpacity>
           </View>
 
@@ -448,7 +500,7 @@ export default function App() {
             </View>
           ) : (
             <View style={styles.center}>
-              <Text style={styles.muted}>
+              <Text style={[styles.muted, styles.alwaysWhite]}>
                 Suche nach einer Stadt, um das Wetter zu sehen.
               </Text>
             </View>
@@ -459,14 +511,35 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: {
+  bg: string;
+  panelBg: string;
+  inputBg: string;
+  text: string;
+  textStrong: string;
+  muted: string;
+  cardBg: string;
+  border: string;
+  secondaryButtonBg: string;
+  secondaryButtonBorder: string;
+  buttonPrimaryBg: string;
+  buttonPrimaryBorder: string;
+  buttonText: string;
+  placeholder: string;
+}) =>
+StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#0b0f14",
+    backgroundColor: theme.bg,
   },
   bg: {
     flex: 1,
-    backgroundColor: "#0b0f14",
+    backgroundColor: theme.bg,
+  },
+  bgImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
   container: {
     flex: 1,
@@ -476,13 +549,13 @@ const styles = StyleSheet.create({
     }),
     paddingHorizontal: 16,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    marginTop: 12,
-    marginBottom: 12,
-    color: "#e6f2ff",
-  },
+    title: {
+      fontSize: 28,
+      fontWeight: "700",
+      marginTop: 12,
+      marginBottom: 12,
+      color: "#ffffff",
+    },
   searchRow: {
     flexDirection: "row",
     gap: 8,
@@ -492,32 +565,35 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     height: 44,
-    backgroundColor: "#1a1f27",
+    backgroundColor: theme.inputBg,
     paddingHorizontal: 12,
     borderRadius: 8,
     fontSize: 16,
-    color: "#d9e6f2",
+    color: theme.text,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#2a3441",
+    borderColor: theme.border,
   },
   button: {
     paddingHorizontal: 16,
     height: 44,
-    backgroundColor: "#0A84FF",
+    backgroundColor: theme.buttonPrimaryBg,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#0a6ad1",
+    borderColor: theme.buttonPrimaryBorder,
   },
   buttonText: {
-    color: "#eef6ff",
+    color: theme.buttonText,
     fontWeight: "600",
     fontSize: 16,
   },
   secondaryButton: {
-    backgroundColor: "#1f2630",
-    borderColor: "#2a3441",
+    backgroundColor: theme.secondaryButtonBg,
+    borderColor: theme.secondaryButtonBorder,
+  },
+  secondaryButtonText: {
+    color: theme.textStrong,
   },
   actionsRow: {
     flexDirection: "row",
@@ -530,17 +606,17 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: "#1a1f27",
+    backgroundColor: theme.cardBg,
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#2a3441",
+    borderColor: theme.border,
   },
   cardText: {
-    color: "#d9e6f2",
+    color: theme.text,
     fontWeight: "600",
   },
   cardRemove: {
-    color: "#99a8b8",
+    color: theme.muted,
     marginLeft: 4,
   },
   center: {
@@ -549,12 +625,15 @@ const styles = StyleSheet.create({
     marginTop: 32,
   },
   muted: {
-    color: "#b3c2d1",
+    color: theme.muted,
     marginTop: 8,
   },
   error: {
     color: "#ff8a80",
     fontWeight: "600",
+  },
+  alwaysWhite: {
+    color: "#ffffff",
   },
   content: {
     flex: 1,
@@ -565,16 +644,16 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 12,
   },
-  location: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#e6f2ff",
-  },
-  condition: {
-    fontSize: 16,
-    color: "#c1d0df",
-    marginTop: 4,
-  },
+    location: {
+      fontSize: 22,
+      fontWeight: "700",
+      color: "#ffffff",
+    },
+    condition: {
+      fontSize: 16,
+      color: "#ffffff",
+      marginTop: 4,
+    },
   hero: {
     width: 84,
     height: 84,
@@ -588,15 +667,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: 12,
   },
-  label: {
-    fontSize: 16,
-    color: "#d0dceb",
-  },
-  value: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#e6f2ff",
-  },
+    label: {
+      fontSize: 16,
+      color: "#ffffff",
+    },
+    value: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#ffffff",
+    },
   valueRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -608,6 +687,6 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: 1,
-    backgroundColor: "#2a3441",
+    backgroundColor: theme.border,
   },
 });

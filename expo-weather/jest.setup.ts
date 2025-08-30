@@ -11,8 +11,13 @@ jest.mock('expo-status-bar', () => ({
   StatusBar: () => null,
 }));
 
-// Silence animated warnings and avoid native animated dependency
-jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
+// Silence animated warnings and avoid native animated dependency (best-effort)
+try {
+  // Some environments may not expose this path; ignore if not found
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require.resolve('react-native/Libraries/Animated/NativeAnimatedHelper');
+  jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
+} catch {}
 
 // Force a stable color scheme in tests
 jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
@@ -20,19 +25,43 @@ jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
   default: () => 'light',
 }));
 
-// Replace TouchableOpacity with a simple mock to avoid Animated hooks
-jest.mock('react-native/Libraries/Components/Touchable/TouchableOpacity', () => {
-  const React = require('react');
-  return function MockTouchableOpacity(props: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-    const { children, ...rest } = props;
-    return React.createElement('RNMockTouchableOpacity', rest, children);
-  };
-});
+// Use official AsyncStorage Jest mock
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+);
 
-// Simplify FlatList to avoid VirtualizedList hooks during tests
-jest.mock('react-native/Libraries/Lists/FlatList', () => {
-  const React = require('react');
-  return function MockFlatList() {
-    return null;
-  };
-});
+// Tame RN Animated internals that can pull in hooks not supported by test renderer in some setups
+try {
+  // No-op animated props hook
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require.resolve('react-native/src/private/animated/createAnimatedPropsHook');
+  jest.mock('react-native/src/private/animated/createAnimatedPropsHook', () => ({
+    __esModule: true,
+    default: () => () => ({}),
+  }));
+} catch {}
+
+try {
+  // Wrap animated component factory to return plain wrapped components
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require.resolve('react-native/Libraries/Animated/createAnimatedComponent');
+  jest.mock('react-native/Libraries/Animated/createAnimatedComponent', () => {
+    const React = require('react');
+    return function createAnimatedComponent(Component: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      return React.forwardRef((props: any, ref: any) => React.createElement(Component, { ...props, ref })); // eslint-disable-line @typescript-eslint/no-explicit-any
+    };
+  });
+} catch {}
+
+// Simplify FlatList to avoid VirtualizedList internals in tests
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require.resolve('react-native/Libraries/Lists/FlatList');
+  jest.mock('react-native/Libraries/Lists/FlatList', () => {
+    const React = require('react');
+    const Mock = function MockFlatList() { return null; };
+    return { __esModule: true, default: Mock };
+  });
+} catch {}
+
+// Note: rely on jest-expo's built-in React Native mocks
